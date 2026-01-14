@@ -5,53 +5,61 @@
     <title>Calligraphie AR - Meta Quest</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script>
-      // COMPOSANT : Forceur de Passthrough & Correction du pinceau
-      AFRAME.registerComponent('quest-setup', {
+      // 1. COMPOSANT : Forceur de Passthrough (AR)
+      AFRAME.registerComponent('force-ar', {
         init: function () {
-          const sceneEl = this.el.sceneEl;
-
-          // 1. Forcer la transparence du rendu dès le départ
-          sceneEl.renderer.setClearAlpha(0);
-          
-          sceneEl.addEventListener('enter-vr', () => {
-            // Si on entre en mode VR ou AR, on vide le fond
-            if (sceneEl.is('vr-mode') || sceneEl.is('ar-mode')) {
-              sceneEl.renderer.setClearColor('#000000', 0);
-              sceneEl.renderer.setClearAlpha(0);
-              if(document.querySelector('a-sky')) document.querySelector('a-sky').setAttribute('visible', false);
+          this.el.sceneEl.addEventListener('enter-vr', () => {
+            document.body.style.background = "transparent";
+            this.el.sceneEl.renderer.setClearAlpha(0);
+            this.el.sceneEl.renderer.setClearColor('#000000', 0);
+            if (document.querySelector('a-sky')) {
+              document.querySelector('a-sky').setAttribute('visible', false);
             }
           });
         }
       });
 
+      // 2. COMPOSANT : Saisie avec rotation corrigée (Pointe vers le bas)
       AFRAME.registerComponent('grab-pinceau', {
         init: function () {
           this.pinceau = document.querySelector('#pinceau-model');
+          this.hand = this.el;
           this.isGrabbed = false;
           
           this.el.addEventListener('triggerdown', () => {
-            // Utilisation du World Position pour une détection plus fiable
             let handPos = new THREE.Vector3();
-            this.el.object3D.getWorldPosition(handPos);
+            this.hand.object3D.getWorldPosition(handPos);
             let pinceauPos = new THREE.Vector3();
             this.pinceau.object3D.getWorldPosition(pinceauPos);
-            
-            if (!this.isGrabbed && handPos.distanceTo(pinceauPos) < 0.8) {
-              this.el.appendChild(this.pinceau);
-              this.pinceau.setAttribute('position', '0 0 -0.2');
-              this.pinceau.setAttribute('rotation', '-90 0 0');
-              this.pinceau.setAttribute('scale', '0.3 0.3 0.3');
+
+            if (!this.isGrabbed && handPos.distanceTo(pinceauPos) < 0.5) {
               this.isGrabbed = true;
             } else if (this.isGrabbed) {
-              document.querySelector('#table').appendChild(this.pinceau);
-              this.pinceau.setAttribute('position', '0.3 0.05 0.1');
-              this.pinceau.setAttribute('rotation', '0 0 0');
               this.isGrabbed = false;
+              // Repose le pinceau à plat sur la table
+              this.pinceau.setAttribute('position', '0.3 0.05 0.1');
+              this.pinceau.setAttribute('rotation', '0 0 90'); // Couché sur le côté
             }
           });
+        },
+        tick: function () {
+          if (this.isGrabbed) {
+            let handObj = this.hand.object3D;
+            // On suit la main
+            this.pinceau.object3D.position.copy(handObj.position);
+            this.pinceau.object3D.rotation.copy(handObj.rotation);
+            
+            // --- CORRECTION DE L'ORIENTATION ---
+            // 1. On avance le pinceau devant la main
+            this.pinceau.object3D.translateZ(-0.15); 
+            // 2. On le fait pivoter pour que la pointe regarde le sol
+            // On teste ici une rotation de 180° (Math.PI) sur l'axe X pour le retourner
+            this.pinceau.object3D.rotateX(Math.PI); 
+          }
         }
       });
 
+      // 3. COMPOSANT : Tracé (Toujours actif)
       AFRAME.registerComponent('trace-ink', {
         tick: function () {
           let pinceau = document.querySelector('#pinceau-model');
@@ -64,9 +72,9 @@
           papier.object3D.getWorldPosition(papierPos);
 
           let distVerticale = Math.abs(tipPos.y - papierPos.y);
-          if (distVerticale < 0.05 && tipPos.distanceTo(papierPos) < 0.5) {
+          if (distVerticale < 0.04 && tipPos.distanceTo(papierPos) < 0.4) {
             let trace = document.createElement('a-circle');
-            trace.setAttribute('radius', '0.01');
+            trace.setAttribute('radius', '0.008');
             trace.setAttribute('color', '#1a1a1a');
             trace.setAttribute('rotation', '-90 0 0');
             trace.setAttribute('material', 'shader: flat');
@@ -77,10 +85,10 @@
       });
     </script>
   </head>
-  <body style="background-color: rgba(0,0,0,0);">
+  <body style="background: transparent;">
 
     <a-scene 
-      quest-setup
+      force-ar 
       trace-ink
       renderer="alpha: true; colorManagement: true;"
       webxr="optionalFeatures: passthrough, local-floor; referenceSpaceType: local-floor">
@@ -92,12 +100,20 @@
 
       <a-entity gltf-model="#pavillon-glb" position="0 1.636 -0.536" scale="3.191 3.120 3.338"></a-entity>
 
-      <a-box id="table" position="0 0.734 -0.434" width="1" height="0.05" depth="0.6" color="#3d2b1f">
-          <a-plane id="papier" position="0 0.03 0" rotation="-90 0 0" width="0.4" height="0.5" color="#fffaf0">
-              <a-text value="永" color="#ccc" align="center" width="2" position="0 0 0.01"></a-text>
-          </a-plane>
-          <a-entity id="pinceau-model" gltf-model="#pinceau-glb" position="0.3 0.1 0.1" scale="0.3 0.3 0.3"></a-entity>
-      </a-box>
+      <a-entity id="table-group" position="0 0.734 -0.434">
+        <a-box id="table" width="1" height="0.05" depth="0.6" color="#3d2b1f">
+            <a-plane id="papier" position="0 0.03 0" rotation="-90 0 0" width="0.4" height="0.5" color="#fffaf0">
+                <a-text value="永" color="#ccc" align="center" width="2" position="0 0 0.01"></a-text>
+            </a-plane>
+        </a-box>
+        
+        <a-entity id="pinceau-model" 
+                  gltf-model="#pinceau-glb" 
+                  position="0.3 0.08 0.1" 
+                  rotation="0 0 90" 
+                  scale="0.3 0.3 0.3">
+        </a-entity>
+      </a-entity>
 
       <a-entity oculus-touch-controls="hand: right" grab-pinceau></a-entity>
       <a-entity oculus-touch-controls="hand: left"></a-entity>
