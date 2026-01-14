@@ -5,48 +5,46 @@
     <title>Calligraphie AR - Meta Quest</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script>
-      // 1. FORCER LE MODE AR ET LA TRANSPARENCE
-      AFRAME.registerComponent('ar-handler', {
+      // COMPOSANT : Forceur de Passthrough & Correction du pinceau
+      AFRAME.registerComponent('quest-setup', {
         init: function () {
-          // Force le mode AR au démarrage si possible
-          this.el.sceneEl.setAttribute('webxr', 'requiredFeatures: passthrough, local-floor; referenceSpaceType: local-floor');
+          const sceneEl = this.el.sceneEl;
+
+          // 1. Forcer la transparence du rendu dès le départ
+          sceneEl.renderer.setClearAlpha(0);
           
-          this.el.sceneEl.addEventListener('enter-vr', () => {
-            if (this.el.sceneEl.is('ar-mode')) {
-              this.el.sceneEl.renderer.setClearAlpha(0);
-              this.el.sceneEl.renderer.setClearColor('#000000', 0);
+          sceneEl.addEventListener('enter-vr', () => {
+            // Si on entre en mode VR ou AR, on vide le fond
+            if (sceneEl.is('vr-mode') || sceneEl.is('ar-mode')) {
+              sceneEl.renderer.setClearColor('#000000', 0);
+              sceneEl.renderer.setClearAlpha(0);
               if(document.querySelector('a-sky')) document.querySelector('a-sky').setAttribute('visible', false);
             }
           });
         }
       });
 
-      // 2. SAISIE DU PINCEAU (Correction de la disparition)
       AFRAME.registerComponent('grab-pinceau', {
         init: function () {
           this.pinceau = document.querySelector('#pinceau-model');
           this.isGrabbed = false;
           
           this.el.addEventListener('triggerdown', () => {
+            // Utilisation du World Position pour une détection plus fiable
             let handPos = new THREE.Vector3();
             this.el.object3D.getWorldPosition(handPos);
             let pinceauPos = new THREE.Vector3();
             this.pinceau.object3D.getWorldPosition(pinceauPos);
             
-            // Distance de détection augmentée à 0.8 pour faciliter la saisie
             if (!this.isGrabbed && handPos.distanceTo(pinceauPos) < 0.8) {
-              // On l'attache physiquement à la main
               this.el.appendChild(this.pinceau);
-              // Position relative pour qu'il soit bien devant la manette
               this.pinceau.setAttribute('position', '0 0 -0.2');
               this.pinceau.setAttribute('rotation', '-90 0 0');
               this.pinceau.setAttribute('scale', '0.3 0.3 0.3');
               this.isGrabbed = true;
             } else if (this.isGrabbed) {
-              // On le repose sur la table
-              let table = document.querySelector('#table');
-              table.appendChild(this.pinceau);
-              this.pinceau.setAttribute('position', '0.3 0.1 0.1');
+              document.querySelector('#table').appendChild(this.pinceau);
+              this.pinceau.setAttribute('position', '0.3 0.05 0.1');
               this.pinceau.setAttribute('rotation', '0 0 0');
               this.isGrabbed = false;
             }
@@ -54,7 +52,6 @@
         }
       });
 
-      // 3. TRACÉ (Fixé dynamiquement)
       AFRAME.registerComponent('trace-ink', {
         tick: function () {
           let pinceau = document.querySelector('#pinceau-model');
@@ -67,14 +64,12 @@
           papier.object3D.getWorldPosition(papierPos);
 
           let distVerticale = Math.abs(tipPos.y - papierPos.y);
-          
-          // Détection de contact (proximité 4cm)
-          if (distVerticale < 0.04 && tipPos.distanceTo(papierPos) < 0.5) {
+          if (distVerticale < 0.05 && tipPos.distanceTo(papierPos) < 0.5) {
             let trace = document.createElement('a-circle');
             trace.setAttribute('radius', '0.01');
             trace.setAttribute('color', '#1a1a1a');
             trace.setAttribute('rotation', '-90 0 0');
-            trace.setAttribute('material', 'shader: flat'); // Plus performant pour éviter les ralentissements
+            trace.setAttribute('material', 'shader: flat');
             trace.setAttribute('position', {x: tipPos.x, y: papierPos.y + 0.002, z: tipPos.z});
             this.el.sceneEl.appendChild(trace);
           }
@@ -82,12 +77,13 @@
       });
     </script>
   </head>
-  <body>
+  <body style="background-color: rgba(0,0,0,0);">
+
     <a-scene 
-      ar-handler 
+      quest-setup
       trace-ink
-      renderer="alpha: true; antialias: false; precision: mediump;"
-      webxr="requiredFeatures: passthrough, local-floor; referenceSpaceType: local-floor">
+      renderer="alpha: true; colorManagement: true;"
+      webxr="optionalFeatures: passthrough, local-floor; referenceSpaceType: local-floor">
 
       <a-assets>
         <a-asset-item id="pinceau-glb" src="pinceau.glb"></a-asset-item>
@@ -100,7 +96,6 @@
           <a-plane id="papier" position="0 0.03 0" rotation="-90 0 0" width="0.4" height="0.5" color="#fffaf0">
               <a-text value="永" color="#ccc" align="center" width="2" position="0 0 0.01"></a-text>
           </a-plane>
-          
           <a-entity id="pinceau-model" gltf-model="#pinceau-glb" position="0.3 0.1 0.1" scale="0.3 0.3 0.3"></a-entity>
       </a-box>
 
