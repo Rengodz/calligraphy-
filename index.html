@@ -20,28 +20,22 @@
               this.isGrabbed = true;
             } else if (this.isGrabbed) {
               this.isGrabbed = false;
-              // Repose sur la table à sa position initiale absolue
-              this.pinceau.setAttribute('position', '0.3 0.81 0.1'); 
+              this.pinceau.setAttribute('position', '0.3 0.81 -0.33'); 
               this.pinceau.setAttribute('rotation', '0 0 90');
             }
           });
         },
         tick: function () {
           if (this.isGrabbed) {
-            // On récupère la position et rotation de la main dans le monde
             let handWorldPos = new THREE.Vector3();
             let handWorldQuat = new THREE.Quaternion();
             this.el.object3D.getWorldPosition(handWorldPos);
             this.el.object3D.getWorldQuaternion(handWorldQuat);
 
-            // On applique DIRECTEMENT au pinceau
             this.pinceau.object3D.position.copy(handWorldPos);
             this.pinceau.object3D.quaternion.copy(handWorldQuat);
-            
-            // On force l'échelle pour éviter qu'il ne devienne minuscule
             this.pinceau.object3D.scale.set(0.3, 0.3, 0.3);
             
-            // On l'oriente vers le bas et on l'avance
             this.pinceau.object3D.translateZ(-0.15); 
             this.pinceau.object3D.rotateX(Math.PI); 
           }
@@ -61,8 +55,10 @@
 
           let distCentrale = new THREE.Vector2(tipPos.x - papierPos.x, tipPos.z - papierPos.z).length();
 
-          // On trace si la pointe est à moins de 4cm du papier
-          if (Math.abs(tipPos.y - papierPos.y) < 0.04 && distCentrale < 0.25) {
+          // AJUSTEMENT ICI : 0.12 au lieu de 0.04 pour ne pas avoir à enfoncer le pinceau
+          let distanceVerticale = tipPos.y - papierPos.y;
+
+          if (distanceVerticale < 0.12 && distanceVerticale > -0.02 && distCentrale < 0.25) {
             let trace = document.createElement('a-circle');
             trace.setAttribute('radius', '0.008');
             trace.setAttribute('color', '#1a1a1a');
@@ -74,12 +70,14 @@
         }
       });
 
-      // Force le Passthrough dès l'entrée en VR
-      AFRAME.registerComponent('force-ar', {
+      // Nouveau composant spécifique pour forcer l'AR
+      AFRAME.registerComponent('ar-bridge', {
         init: function () {
           this.el.sceneEl.addEventListener('enter-vr', () => {
-            this.el.sceneEl.renderer.setClearAlpha(0);
-            if (document.querySelector('a-sky')) document.querySelector('a-sky').remove();
+            if (this.el.sceneEl.is('ar-mode')) {
+              this.el.sceneEl.renderer.setClearAlpha(0);
+              this.el.sceneEl.renderer.setClearColor('#000000', 0);
+            }
           });
         }
       });
@@ -88,10 +86,10 @@
   <body style="background: transparent;">
 
     <a-scene 
-      force-ar 
+      ar-bridge
       trace-ink
-      renderer="alpha: true;"
-      webxr="optionalFeatures: passthrough, local-floor; referenceSpaceType: local-floor">
+      renderer="alpha: true; antialias: true; colorManagement: true;"
+      webxr="requiredFeatures: local-floor, passthrough; optionalFeatures: dom-overlay; overlayElement: #overlay; referenceSpaceType: local-floor">
 
       <a-assets>
         <a-asset-item id="pinceau-glb" src="pinceau.glb"></a-asset-item>
