@@ -5,6 +5,26 @@
     <title>Calligraphie AR - Meta Quest</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script>
+      // 1. FORCEUR DE TRANSPARENCE (Pour le Passthrough)
+      AFRAME.registerComponent('ar-config', {
+        init: function () {
+          const sceneEl = this.el.sceneEl;
+
+          // On prépare le moteur de rendu pour la transparence
+          sceneEl.renderer.setClearAlpha(0);
+          
+          sceneEl.addEventListener('enter-vr', () => {
+            // On vérifie si on est bien en mode AR ou VR
+            if (sceneEl.is('ar-mode') || sceneEl.is('vr-mode')) {
+              // On supprime physiquement le fond
+              sceneEl.renderer.setClearColor('#000000', 0);
+              if (document.querySelector('a-sky')) document.querySelector('a-sky').remove();
+            }
+          });
+        }
+      });
+
+      // 2. GESTION DU PINCEAU (Suivi et Rotation)
       AFRAME.registerComponent('quest-controller-handler', {
         init: function () {
           this.pinceau = document.querySelector('#pinceau-model');
@@ -16,10 +36,11 @@
             let pinceauPos = new THREE.Vector3();
             this.pinceau.object3D.getWorldPosition(pinceauPos);
 
-            if (!this.isGrabbed && handPos.distanceTo(pinceauPos) < 0.4) {
+            if (!this.isGrabbed && handPos.distanceTo(pinceauPos) < 0.5) {
               this.isGrabbed = true;
             } else if (this.isGrabbed) {
               this.isGrabbed = false;
+              // Repose sur la table (Coordonnées mondiales)
               this.pinceau.setAttribute('position', '0.3 0.81 -0.33'); 
               this.pinceau.setAttribute('rotation', '0 0 90');
             }
@@ -42,6 +63,7 @@
         }
       });
 
+      // 3. SYSTÈME DE TRACÉ (Hauteur corrigée)
       AFRAME.registerComponent('trace-ink', {
         tick: function () {
           let pinceau = document.querySelector('#pinceau-model');
@@ -54,11 +76,10 @@
           papier.object3D.getWorldPosition(papierPos);
 
           let distCentrale = new THREE.Vector2(tipPos.x - papierPos.x, tipPos.z - papierPos.z).length();
-
-          // AJUSTEMENT ICI : 0.12 au lieu de 0.04 pour ne pas avoir à enfoncer le pinceau
           let distanceVerticale = tipPos.y - papierPos.y;
 
-          if (distanceVerticale < 0.12 && distanceVerticale > -0.02 && distCentrale < 0.25) {
+          // Tracé si on est entre 0 et 10cm au-dessus du papier
+          if (distanceVerticale < 0.10 && distanceVerticale > -0.01 && distCentrale < 0.25) {
             let trace = document.createElement('a-circle');
             trace.setAttribute('radius', '0.008');
             trace.setAttribute('color', '#1a1a1a');
@@ -69,27 +90,15 @@
           }
         }
       });
-
-      // Nouveau composant spécifique pour forcer l'AR
-      AFRAME.registerComponent('ar-bridge', {
-        init: function () {
-          this.el.sceneEl.addEventListener('enter-vr', () => {
-            if (this.el.sceneEl.is('ar-mode')) {
-              this.el.sceneEl.renderer.setClearAlpha(0);
-              this.el.sceneEl.renderer.setClearColor('#000000', 0);
-            }
-          });
-        }
-      });
     </script>
   </head>
   <body style="background: transparent;">
 
     <a-scene 
-      ar-bridge
+      ar-config
       trace-ink
       renderer="alpha: true; antialias: true; colorManagement: true;"
-      webxr="requiredFeatures: local-floor, passthrough; optionalFeatures: dom-overlay; overlayElement: #overlay; referenceSpaceType: local-floor">
+      webxr="optionalFeatures: passthrough, local-floor; referenceSpaceType: local-floor">
 
       <a-assets>
         <a-asset-item id="pinceau-glb" src="pinceau.glb"></a-asset-item>
