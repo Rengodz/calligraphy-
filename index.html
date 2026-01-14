@@ -5,6 +5,17 @@
     <title>Calligraphie AR - Meta Quest</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script>
+      // COMPOSANT : Activation de la transparence pour l'AR
+      AFRAME.registerComponent('ar-passthrough', {
+        init: function () {
+          this.el.sceneEl.addEventListener('enter-vr', () => {
+            if (this.el.sceneEl.is('ar-mode')) {
+              this.el.sceneEl.renderer.setClearColor('#000000', 0);
+            }
+          });
+        }
+      });
+
       // COMPOSANT : Gestion de la saisie et du dépôt du pinceau
       AFRAME.registerComponent('grab-pinceau', {
         init: function () {
@@ -13,19 +24,18 @@
           
           this.el.addEventListener('triggerdown', () => {
             if (!this.isGrabbed) {
-              // Vérifier la distance entre la main et le pinceau
               let handPos = this.el.object3D.position;
-              let pinceauPos = this.pinceau.object3D.position;
+              let pinceauPos = new THREE.Vector3();
+              this.pinceau.object3D.getWorldPosition(pinceauPos);
               let dist = handPos.distanceTo(pinceauPos);
 
-              if (dist < 0.3) { // Si la main est assez proche
-                this.pinceau.setAttribute('position', '0 0 -0.1'); // Ajuste la position dans la main
-                this.pinceau.setAttribute('rotation', '-90 0 0'); // Oriente le pinceau vers l'avant
-                this.el.appendChild(this.pinceau); // Attache le pinceau à la main
+              if (dist < 0.3) {
+                this.pinceau.setAttribute('position', '0 0 -0.1');
+                this.pinceau.setAttribute('rotation', '-90 0 0');
+                this.el.appendChild(this.pinceau);
                 this.isGrabbed = true;
               }
             } else {
-              // Reposer le pinceau sur la table
               let table = document.querySelector('#table');
               table.appendChild(this.pinceau);
               this.pinceau.setAttribute('position', '0.3 0.05 0.1');
@@ -40,13 +50,13 @@
       AFRAME.registerComponent('trace-ink', {
         tick: function () {
           let pinceau = document.querySelector('#pinceau-model');
+          if (!pinceau) return;
           let worldPos = new THREE.Vector3();
           pinceau.object3D.getWorldPosition(worldPos);
 
-          // Zone de la feuille : Hauteur env 0.75, et limites X/Z
-          if (worldPos.y < 0.77 && worldPos.y > 0.74 && 
-              worldPos.z < -0.3 && worldPos.z > -0.7 && 
-              worldPos.x < 0.2 && worldPos.x > -0.2) {
+          // Zone de la feuille (Hauteur table 0.7 + épaisseur)
+          if (worldPos.y < 0.75 && worldPos.y > 0.70 && 
+              worldPos.z < -0.3 && worldPos.z > -0.8) {
             
             let trace = document.createElement('a-sphere');
             trace.setAttribute('radius', '0.004');
@@ -54,9 +64,8 @@
             trace.setAttribute('position', `${worldPos.x} ${worldPos.y} ${worldPos.z}`);
             this.el.sceneEl.appendChild(trace);
             
-            // Vibration haptique légère pour simuler le contact
             let hand = pinceau.parentNode;
-            if (hand.components['oculus-touch-controls']) {
+            if (hand && hand.components['oculus-touch-controls']) {
               hand.components['oculus-touch-controls'].pulse(0.1, 20);
             }
           }
@@ -65,21 +74,23 @@
     </script>
   </head>
   <body>
-    <a-scene webxr="optionalFeatures: passthrough; referenceSpaceType: local-floor" trace-ink>
-      
+    <a-scene 
+      ar-passthrough 
+      trace-ink 
+      webxr="optionalFeatures: passthrough, local-floor; referenceSpaceType: local-floor">
+
       <a-assets>
         <a-asset-item id="pinceau-glb" src="pinceau.glb"></a-asset-item>
         <a-asset-item id="pavillon-glb" src="pavillon.glb"></a-asset-item>
       </a-assets>
 
-      <a-entity id="decor" position="0 1.636 -0.536">
-        <a-entity gltf-model="#pavillon-glb" scale="3.191 3.120 3.338" opacity="0.5"></a-entity>
+      <a-entity id="decor" position="0 0 -0.5">
+        <a-entity gltf-model="#pavillon-glb" scale="3.191 3.120 3.338" opacity="0.5" position="0 0 0"></a-entity>
         
         <a-box id="table" position="0 0.7 -0.5" width="1" height="0.05" depth="0.6" color="#3d2b1f">
             <a-plane id="papier" position="0 0.03 0" rotation="-90 0 0" width="0.4" height="0.5" color="#fffaf0">
                 <a-text value="永" color="#ccc" align="center" width="2" position="0 0 0.01"></a-text>
             </a-plane>
-
             <a-entity id="pinceau-model" gltf-model="#pinceau-glb" position="0.3 0.05 0.1" scale="0.05 0.05 0.05"></a-entity>
         </a-box>
       </a-entity>
@@ -88,6 +99,7 @@
       <a-entity oculus-touch-controls="hand: left"></a-entity>
 
       <a-entity camera look-controls position="0 1.6 0"></a-entity>
+      
     </a-scene>
   </body>
 </html>
