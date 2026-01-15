@@ -1,155 +1,129 @@
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <meta charset="utf-8">
-    <title>Calligraphie AR - Quest Ready</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com/three@0.150.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.150.0/examples/jsm/"
-        }
-    }
-    </script>
-    <style>
-        body { margin: 0; background-color: transparent; }
-        #overlay { position: fixed; bottom: 20px; width: 100%; text-align: center; z-index: 10; }
-        button { padding: 15px 25px; background: #ceac5d; color: white; border: none; border-radius: 8px; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <div id="overlay">
-        <button id="ar-button">ENTRER EN AR (META QUEST)</button>
-    </div>
-
-    <script type="module">
-        import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-
-        let scene, camera, renderer, controller;
-        let pinceauGroup, papier, table;
-        
-        // --- CONFIG LOADER ---
-        const loader = new GLTFLoader();
-        const draco = new DRACOLoader();
-        draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
-        loader.setDRACOLoader(draco);
-
-        init();
-
-        function init() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
-
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.xr.enabled = true;
-            document.body.appendChild(renderer.domElement);
-
-            // LUMIERES
-            scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-            const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-            sun.position.set(1, 2, 1);
-            scene.add(sun);
-
-            // TABLE & PAPIER (Positionné pour être juste devant l'utilisateur au spawn)
-            const tableGeo = new THREE.BoxGeometry(0.8, 0.05, 0.5);
-            table = new THREE.Mesh(tableGeo, new THREE.MeshStandardMaterial({ color: 0x3d2b1f }));
-            table.position.set(0, 0.8, -0.6); // 80cm de haut, 60cm devant
-            scene.add(table);
-
-            const papierGeo = new THREE.PlaneGeometry(0.35, 0.45);
-            papier = new THREE.Mesh(papierGeo, new THREE.MeshStandardMaterial({ color: 0xfffaf0, side: THREE.DoubleSide }));
-            papier.rotation.x = -Math.PI / 2;
-            papier.position.y = 0.03;
-            table.add(papier);
-
-            // CHARGEMENT MODELS
-            loader.load('pinceau.glb', (gltf) => {
-                pinceauGroup = new THREE.Group();
-                const model = gltf.scene;
-                model.scale.set(0.3, 0.3, 0.3);
-                
-                // Alignement : on tourne le modèle pour que la pointe soit vers l'avant
-                model.rotation.x = Math.PI / 2; 
-                pinceauGroup.add(model);
-                
-                // SPHÈRE DE DEBUG (A supprimer quand ça marche)
-                const debugSphere = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.01),
-                    new THREE.MeshBasicMaterial({color: 0xff0000})
-                );
-                debugSphere.position.set(0, 0, -0.15); // Supposée pointe du pinceau
-                pinceauGroup.add(debugSphere);
-
-                pinceauGroup.visible = false;
-                scene.add(pinceauGroup);
-            });
-
-            loader.load('pavillon.glb', (gltf) => {
-                const pav = gltf.scene;
-                pav.position.set(0, 0, 0); // Le pavillon englobe la scène
-                pav.scale.set(3, 3, 3);
-                scene.add(pav);
-            });
-
-            // BOUTON XR
-            document.getElementById('ar-button').addEventListener('click', () => {
-                navigator.xr.requestSession('immersive-ar', {
-                    requiredFeatures: ['local-floor'],
-                    optionalFeatures: ['hand-tracking']
-                }).then(session => {
-                    renderer.xr.setSession(session);
-                    document.getElementById('overlay').style.display = 'none';
-                });
-            });
-
-            // CONTROLEUR
-            controller = renderer.xr.getController(0);
-            controller.addEventListener('connected', () => {
-                if (pinceauGroup) {
-                    controller.add(pinceauGroup);
-                    pinceauGroup.visible = true;
-                    pinceauGroup.position.set(0, 0, 0);
-                }
-            });
-            scene.add(controller);
-
-            renderer.setAnimationLoop(render);
-        }
-
-        function render() {
-            if (pinceauGroup && renderer.xr.isPresenting) {
-                checkDrawing();
+    <title>Calligraphie AR - Quest 3 Edition</title>
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script>
+      // COMPOSANT FORCE PASSTHROUGH (Nettoyé pour Quest 3)
+      AFRAME.registerComponent('ar-handler', {
+        init: function () {
+          this.el.addEventListener('enter-vr', () => {
+            if (this.el.is('ar-mode')) {
+              // On force le fond en noir avec alpha 0 pour voir le salon
+              this.el.renderer.setClearColor('#000000', 0);
+              // On cache le pavillon si on veut voir son vrai salon, 
+              // ou on le garde si on veut un décor mixte.
+              // document.querySelector('[gltf-model="#pavillon-glb"]').setAttribute('visible', 'false');
             }
-            renderer.render(scene, camera);
+          });
         }
+      });
 
-        function checkDrawing() {
-            const tipPos = new THREE.Vector3();
-            // On récupère la position de la sphère rouge (index 1 du groupe)
-            pinceauGroup.children[1].getWorldPosition(tipPos);
+      // GESTION DU PINCEAU (Optimisée pour le mouvement)
+      AFRAME.registerComponent('quest-controller-handler', {
+        init: function () {
+          this.pinceau = document.querySelector('#pinceau-model');
+          this.isGrabbed = false;
+          
+          this.el.addEventListener('triggerdown', () => {
+            let handPos = new THREE.Vector3();
+            this.el.object3D.getWorldPosition(handPos);
+            let pinceauPos = new THREE.Vector3();
+            this.pinceau.object3D.getWorldPosition(pinceauPos);
 
-            const papierPos = new THREE.Vector3();
-            papier.getWorldPosition(papierPos);
-
-            const distY = Math.abs(tipPos.y - papierPos.y);
-            const distXZ = new THREE.Vector2(tipPos.x - papierPos.x, tipPos.z - papierPos.z).length();
-
-            if (distY < 0.02 && distXZ < 0.2) {
-                const ink = new THREE.Mesh(
-                    new THREE.CircleGeometry(0.007, 8),
-                    new THREE.MeshBasicMaterial({ color: 0x000000 })
-                );
-                ink.rotation.x = -Math.PI / 2;
-                ink.position.set(tipPos.x, papierPos.y + 0.001, tipPos.z);
-                scene.add(ink);
+            // Distance de capture (0.3m)
+            if (!this.isGrabbed && handPos.distanceTo(pinceauPos) < 0.3) {
+              this.isGrabbed = true;
+            } else if (this.isGrabbed) {
+              this.isGrabbed = false;
             }
+          });
+        },
+        tick: function () {
+          if (this.isGrabbed) {
+            // Le pinceau suit la manette avec un léger offset pour simuler la prise en main
+            let handWorldPos = new THREE.Vector3();
+            let handWorldQuat = new THREE.Quaternion();
+            this.el.object3D.getWorldPosition(handWorldPos);
+            this.el.object3D.getWorldQuaternion(handWorldQuat);
+            
+            this.pinceau.object3D.position.copy(handWorldPos);
+            this.pinceau.object3D.quaternion.copy(handWorldQuat);
+            
+            // Ajustement pour que le pinceau sorte "du haut" de la manette
+            this.pinceau.object3D.rotateX(Math.PI / 2); 
+            this.pinceau.object3D.translateY(-0.1); 
+          }
         }
+      });
+
+      // SYSTÈME DE TRACÉ
+      AFRAME.registerComponent('trace-ink', {
+        tick: function () {
+          let pinceau = document.querySelector('#pinceau-model');
+          let papier = document.querySelector('#papier');
+          if (!pinceau || !papier) return;
+
+          let tipPos = new THREE.Vector3();
+          // On vise le bout du pinceau
+          pinceau.object3D.getWorldPosition(tipPos);
+          
+          let papierPos = new THREE.Vector3();
+          papier.object3D.getWorldPosition(papierPos);
+
+          let distanceVerticale = tipPos.y - papierPos.y;
+          let distCentrale = new THREE.Vector2(tipPos.x - papierPos.x, tipPos.z - papierPos.z).length();
+
+          // Détection de contact (Seuil 2cm au dessus du papier)
+          if (distanceVerticale < 0.02 && distanceVerticale > -0.01 && distCentrale < 0.3) {
+            let trace = document.createElement('a-circle');
+            trace.setAttribute('radius', '0.006');
+            trace.setAttribute('color', '#1a1a1a');
+            trace.setAttribute('rotation', '-90 0 0');
+            trace.setAttribute('material', 'shader: flat');
+            // On pose l'encre juste au dessus du papier pour éviter le Z-fighting
+            trace.setAttribute('position', {x: tipPos.x, y: papierPos.y + 0.001, z: tipPos.z});
+            this.el.sceneEl.appendChild(trace);
+          }
+        }
+      });
     </script>
-</body>
+  </head>
+  <body>
+    <a-scene 
+      ar-handler
+      trace-ink
+      renderer="alpha: true; antialias: true; colorManagement: true;"
+      webxr="optionalFeatures: passthrough, local-floor; referenceSpaceType: local-floor">
+
+      <a-assets>
+        <a-asset-item id="pinceau-glb" src="pinceau.glb"></a-asset-item>
+        <a-asset-item id="pavillon-glb" src="pavillon.glb"></a-asset-item>
+      </a-assets>
+
+      <a-entity light="type: ambient; intensity: 0.8;"></a-entity>
+      <a-entity light="type: directional; intensity: 0.6;" position="1 2 1"></a-entity>
+
+      <a-entity gltf-model="#pavillon-glb" position="0 1.6 -0.5" scale="3.1 3.1 3.1"></a-entity>
+
+      <a-box id="table" position="0 0.734 -0.434" width="0.8" height="0.05" depth="0.5" color="#3d2b1f">
+          <a-plane id="papier" position="0 0.03 0" rotation="-90 0 0" width="0.35" height="0.45" color="#fffaf0">
+              <a-text value="永" color="#bbb" align="center" width="1.5" position="0 0 0.01"></a-text>
+          </a-plane>
+      </a-box>
+
+      <a-entity id="pinceau-model" 
+                gltf-model="#pinceau-glb" 
+                position="0.2 0.8 -0.35" 
+                rotation="0 0 90" 
+                scale="0.3 0.3 0.3">
+      </a-entity>
+
+      <a-entity oculus-touch-controls="hand: right" quest-controller-handler></a-entity>
+      <a-entity oculus-touch-controls="hand: left"></a-entity>
+
+      <a-entity camera look-controls position="0 1.6 0"></a-entity>
+    </a-scene>
+  </body>
 </html>
