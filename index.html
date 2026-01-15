@@ -2,21 +2,26 @@
 <html lang="fr">
 <head>
     <meta charset="utf-8">
-    <title>Calligraphie AR - Three.js Final</title>
+    <title>Calligraphie AR - Stable</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/examples/js/loaders/GLTFLoader.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: transparent; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background-color: #000; }
         #ar-button {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
             padding: 15px 30px; background: #ceac5d; color: white; border: none; 
-            border-radius: 8px; font-weight: bold; cursor: pointer; z-index: 100;
+            border-radius: 8px; font-weight: bold; cursor: pointer; z-index: 1000;
+        }
+        #info {
+            position: absolute; top: 10px; width: 100%; text-align: center;
+            color: white; z-index: 1000; font-family: sans-serif; pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <button id="ar-button">Lancer la Calligraphie AR</button>
+    <div id="info">Chargement des ressources...</div>
+    <button id="ar-button" style="display:none;">Lancer l'AR</button>
 
     <script type="module">
         let camera, scene, renderer, controller;
@@ -25,77 +30,88 @@
 
         init();
 
-        function init() {
+        async function init() {
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 40);
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
-            // LUMIÈRES (Indispensables pour voir les modèles GLB)
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1.0); 
-            scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-            directionalLight.position.set(2, 5, 2);
-            scene.add(directionalLight);
+            // Lumières renforcées
+            scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(1, 2, 1);
+            scene.add(light);
 
-            // Rendu
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.xr.enabled = true;
             document.body.appendChild(renderer.domElement);
 
-            // 1. CHARGEMENT PAVILLON
-            loader.load('pavillon.glb', (gltf) => {
-                pavillon = gltf.scene;
-                pavillon.position.set(0, 1.636, -0.536);
-                pavillon.scale.set(3.191, 3.12, 3.338);
-                scene.add(pavillon);
-                console.log("Pavillon chargé");
-            }, undefined, (error) => console.error("Erreur Pavillon:", error));
+            // Force le fond transparent du renderer
+            renderer.setClearColor(0x000000, 0);
 
-            // 2. TABLE ET PAPIER
+            // Chargement Table et Papier (Géométries simples en premier pour tester)
             const tableGeo = new THREE.BoxGeometry(1, 0.05, 0.6);
-            const tableMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f });
-            table = new THREE.Mesh(tableGeo, tableMat);
-            table.position.set(0, 0.734, -0.434);
+            table = new THREE.Mesh(tableGeo, new THREE.MeshStandardMaterial({ color: 0x3d2b1f }));
+            table.position.set(0, 0.7, -0.5);
             scene.add(table);
 
             const papierGeo = new THREE.PlaneGeometry(0.4, 0.5);
-            const papierMat = new THREE.MeshStandardMaterial({ color: 0xfffaf0, side: THREE.DoubleSide });
-            papier = new THREE.Mesh(papierGeo, papierMat);
+            papier = new THREE.Mesh(papierGeo, new THREE.MeshStandardMaterial({ color: 0xfffaf0 }));
             papier.rotation.x = -Math.PI / 2;
-            papier.position.set(0, 0.03, 0);
+            papier.position.y = 0.03;
             table.add(papier);
 
-            // 3. CHARGEMENT PINCEAU
-            loader.load('pinceau.glb', (gltf) => {
-                pinceau = gltf.scene;
-                pinceau.scale.set(0.3, 0.3, 0.3);
-                pinceau.visible = false; 
-                console.log("Pinceau chargé");
-            });
+            // Chargement des GLB avec gestion d'état
+            const loadModel = (url) => {
+                return new Promise((resolve, reject) => {
+                    loader.load(url, resolve, undefined, reject);
+                });
+            };
 
-            // GESTION WEBXR AR
-            const arButton = document.getElementById('ar-button');
-            arButton.addEventListener('click', () => {
+            try {
+                const [pavillonData, pinceauData] = await Promise.all([
+                    loadModel('pavillon.glb'),
+                    loadModel('pinceau.glb')
+                ]);
+                
+                pavillon = pavillonData.scene;
+                pavillon.position.set(0, 1.6, -0.5);
+                pavillon.scale.set(3, 3, 3);
+                scene.add(pavillon);
+
+                pinceau = pinceauData.scene;
+                pinceau.scale.set(0.3, 0.3, 0.3);
+                pinceau.visible = false;
+
+                document.getElementById('info').innerHTML = "Prêt pour l'AR";
+                document.getElementById('ar-button').style.display = 'block';
+            } catch (e) {
+                document.getElementById('info').innerHTML = "Erreur de chargement des modèles GLB";
+                console.error(e);
+            }
+
+            // Setup AR
+            const button = document.getElementById('ar-button');
+            button.onclick = () => {
                 navigator.xr.requestSession('immersive-ar', {
-                    requiredFeatures: ['local-floor'],
-                    optionalFeatures: ['dom-overlay'],
-                    domOverlay: { root: document.body }
+                    requiredFeatures: ['local-floor']
                 }).then((session) => {
                     renderer.xr.setSession(session);
-                    arButton.style.display = 'none';
+                    button.style.display = 'none';
+                    document.getElementById('info').style.display = 'none';
+                }).catch(err => {
+                    alert("AR non supportée ou bloquée : " + err.message);
                 });
-            });
+            };
 
-            // ATTACHE DU PINCEAU AU CONTROLEUR
+            // Contrôleur
             controller = renderer.xr.getController(0);
             controller.addEventListener('connected', () => {
                 if (pinceau) {
                     controller.add(pinceau);
                     pinceau.visible = true;
-                    // Positionnement pour que la main tienne le manche
-                    pinceau.position.set(0, 0, -0.1); 
-                    pinceau.rotation.set(Math.PI / 2, 0, 0); // Ajuste ici si l'angle n'est pas bon
+                    pinceau.position.set(0, 0, -0.1);
+                    pinceau.rotation.set(Math.PI / 2, 0, 0);
                 }
             });
             scene.add(controller);
@@ -104,21 +120,21 @@
         }
 
         function render() {
-            if (pinceau && papier && renderer.xr.isPresenting) {
+            // Sécurité anti-écran noir : on s'assure que l'alpha est à 0 si on est en AR
+            if (renderer.xr.isPresenting) {
+                renderer.setClearAlpha(0);
                 checkDrawing();
             }
             renderer.render(scene, camera);
         }
 
         function checkDrawing() {
-            // Position mondiale de la pointe
             const tipPos = new THREE.Vector3();
             pinceau.getWorldPosition(tipPos);
             
-            // Correction d'offset (ajustement vers le bout des poils)
-            const direction = new THREE.Vector3(0, -1, 0); // Vers le bas du pinceau
-            direction.applyQuaternion(pinceau.quaternion);
-            tipPos.add(direction.multiplyScalar(0.11)); // Ton réglage de 11cm
+            // On projette le point de tracé
+            const direction = new THREE.Vector3(0, -1, 0).applyQuaternion(pinceau.quaternion);
+            tipPos.add(direction.multiplyScalar(0.11));
 
             const papierPos = new THREE.Vector3();
             papier.getWorldPosition(papierPos);
@@ -126,25 +142,16 @@
             const distY = Math.abs(tipPos.y - papierPos.y);
             const distXZ = new THREE.Vector2(tipPos.x - papierPos.x, tipPos.z - papierPos.z).length();
 
-            if (distY < 0.03 && distXZ < 0.25) {
-                createInkDrop(tipPos.x, papierPos.y + 0.001, tipPos.z);
+            if (distY < 0.02 && distXZ < 0.25) {
+                const dot = new THREE.Mesh(
+                    new THREE.CircleGeometry(0.008, 8),
+                    new THREE.MeshBasicMaterial({ color: 0x000000 })
+                );
+                dot.rotation.x = -Math.PI / 2;
+                dot.position.set(tipPos.x, papierPos.y + 0.001, tipPos.z);
+                scene.add(dot);
             }
         }
-
-        function createInkDrop(x, y, z) {
-            const dotGeo = new THREE.CircleGeometry(0.008, 8);
-            const dotMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-            const dot = new THREE.Mesh(dotGeo, dotMat);
-            dot.rotation.x = -Math.PI / 2;
-            dot.position.set(x, y, z);
-            scene.add(dot);
-        }
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
     </script>
 </body>
 </html>
