@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Calligraphie AR - Framework Power</title>
+    <title>Calligraphie AR - Quest Ready</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
     <script type="importmap">
@@ -13,12 +13,15 @@
         }
     }
     </script>
+    <style>
+        body { margin: 0; background-color: transparent; }
+        #overlay { position: fixed; bottom: 20px; width: 100%; text-align: center; z-index: 10; }
+        button { padding: 15px 25px; background: #ceac5d; color: white; border: none; border-radius: 8px; font-weight: bold; }
+    </style>
 </head>
 <body>
-    <div id="ar-overlay" style="position:fixed; bottom:20px; width:100%; text-align:center; z-index:1000;">
-        <button id="ar-button" style="padding:16px; border-radius:8px; background:#ceac5d; color:white; border:none; font-weight:bold;">
-            DEMARRER L'AR (QUEST/PHONE)
-        </button>
+    <div id="overlay">
+        <button id="ar-button">ENTRER EN AR (META QUEST)</button>
     </div>
 
     <script type="module">
@@ -27,13 +30,13 @@
         import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
         let scene, camera, renderer, controller;
-        let pinceau, papier;
-
-        // Configuration du Loader (Anti-Freeze)
+        let pinceauGroup, papier, table;
+        
+        // --- CONFIG LOADER ---
         const loader = new GLTFLoader();
-        const dracoLoader = new DRACOLoader();
-        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
-        loader.setDRACOLoader(dracoLoader);
+        const draco = new DRACOLoader();
+        draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+        loader.setDRACOLoader(draco);
 
         init();
 
@@ -42,48 +45,76 @@
             camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.xr.enabled = true;
             document.body.appendChild(renderer.domElement);
 
-            // Lumières AR standard
-            scene.add(new THREE.AmbientLight(0xffffff, 1));
-            const sun = new THREE.DirectionalLight(0xffffff, 1);
+            // LUMIERES
+            scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+            const sun = new THREE.DirectionalLight(0xffffff, 1.0);
             sun.position.set(1, 2, 1);
             scene.add(sun);
 
-            // Chargement sécurisé
-            loader.load('pavillon.glb', (gltf) => {
-                gltf.scene.position.set(0, 1.6, -0.5);
-                gltf.scene.scale.set(3, 3, 3);
-                scene.add(gltf.scene);
-            });
+            // TABLE & PAPIER (Positionné pour être juste devant l'utilisateur au spawn)
+            const tableGeo = new THREE.BoxGeometry(0.8, 0.05, 0.5);
+            table = new THREE.Mesh(tableGeo, new THREE.MeshStandardMaterial({ color: 0x3d2b1f }));
+            table.position.set(0, 0.8, -0.6); // 80cm de haut, 60cm devant
+            scene.add(table);
 
+            const papierGeo = new THREE.PlaneGeometry(0.35, 0.45);
+            papier = new THREE.Mesh(papierGeo, new THREE.MeshStandardMaterial({ color: 0xfffaf0, side: THREE.DoubleSide }));
+            papier.rotation.x = -Math.PI / 2;
+            papier.position.y = 0.03;
+            table.add(papier);
+
+            // CHARGEMENT MODELS
             loader.load('pinceau.glb', (gltf) => {
-                pinceau = gltf.scene;
-                pinceau.scale.set(0.3, 0.3, 0.3);
-                pinceau.visible = false;
+                pinceauGroup = new THREE.Group();
+                const model = gltf.scene;
+                model.scale.set(0.3, 0.3, 0.3);
+                
+                // Alignement : on tourne le modèle pour que la pointe soit vers l'avant
+                model.rotation.x = Math.PI / 2; 
+                pinceauGroup.add(model);
+                
+                // SPHÈRE DE DEBUG (A supprimer quand ça marche)
+                const debugSphere = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.01),
+                    new THREE.MeshBasicMaterial({color: 0xff0000})
+                );
+                debugSphere.position.set(0, 0, -0.15); // Supposée pointe du pinceau
+                pinceauGroup.add(debugSphere);
+
+                pinceauGroup.visible = false;
+                scene.add(pinceauGroup);
             });
 
-            // Bouton de lancement AR
-            const btn = document.getElementById('ar-button');
-            btn.addEventListener('click', () => {
-                navigator.xr.requestSession('immersive-ar', { 
+            loader.load('pavillon.glb', (gltf) => {
+                const pav = gltf.scene;
+                pav.position.set(0, 0, 0); // Le pavillon englobe la scène
+                pav.scale.set(3, 3, 3);
+                scene.add(pav);
+            });
+
+            // BOUTON XR
+            document.getElementById('ar-button').addEventListener('click', () => {
+                navigator.xr.requestSession('immersive-ar', {
                     requiredFeatures: ['local-floor'],
-                    optionalFeatures: ['hand-tracking'] 
+                    optionalFeatures: ['hand-tracking']
                 }).then(session => {
                     renderer.xr.setSession(session);
-                    btn.parentElement.style.display = 'none';
+                    document.getElementById('overlay').style.display = 'none';
                 });
             });
 
-            // Contrôleur (La main devient le pinceau)
+            // CONTROLEUR
             controller = renderer.xr.getController(0);
             controller.addEventListener('connected', () => {
-                if(pinceau) {
-                    controller.add(pinceau);
-                    pinceau.visible = true;
-                    pinceau.rotation.x = Math.PI / 2; // Aligné avec l'index
+                if (pinceauGroup) {
+                    controller.add(pinceauGroup);
+                    pinceauGroup.visible = true;
+                    pinceauGroup.position.set(0, 0, 0);
                 }
             });
             scene.add(controller);
@@ -92,10 +123,32 @@
         }
 
         function render() {
-            if (pinceau && renderer.xr.isPresenting) {
-                // Système de tracé (inchangé)
+            if (pinceauGroup && renderer.xr.isPresenting) {
+                checkDrawing();
             }
             renderer.render(scene, camera);
+        }
+
+        function checkDrawing() {
+            const tipPos = new THREE.Vector3();
+            // On récupère la position de la sphère rouge (index 1 du groupe)
+            pinceauGroup.children[1].getWorldPosition(tipPos);
+
+            const papierPos = new THREE.Vector3();
+            papier.getWorldPosition(papierPos);
+
+            const distY = Math.abs(tipPos.y - papierPos.y);
+            const distXZ = new THREE.Vector2(tipPos.x - papierPos.x, tipPos.z - papierPos.z).length();
+
+            if (distY < 0.02 && distXZ < 0.2) {
+                const ink = new THREE.Mesh(
+                    new THREE.CircleGeometry(0.007, 8),
+                    new THREE.MeshBasicMaterial({ color: 0x000000 })
+                );
+                ink.rotation.x = -Math.PI / 2;
+                ink.position.set(tipPos.x, papierPos.y + 0.001, tipPos.z);
+                scene.add(ink);
+            }
         }
     </script>
 </body>
