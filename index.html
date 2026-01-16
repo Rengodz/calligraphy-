@@ -22,7 +22,7 @@
         }
       });
 
-      // 2. SYSTÈME DE TRACÉ PRÉCIS (Correction Axe Y + Sensibilité)
+      // 2. SYSTÈME DE TRACÉ PRÉCIS
       AFRAME.registerComponent('trace-ink', {
         tick: function () {
           let pinceau = document.querySelector('#pinceau-model');
@@ -32,10 +32,11 @@
           let tipPos = new THREE.Vector3();
           pinceau.object3D.getWorldPosition(tipPos);
           
-          // CALCUL DE L'OFFSET
+          // CALCUL DE L'OFFSET VERS LA POINTE
+          // Inversion à -0.15 car le pinceau a subi une rotation de 180°
           let direction = new THREE.Vector3(0, 1, 0); 
           direction.applyQuaternion(pinceau.object3D.quaternion);
-          tipPos.addScaledVector(direction, 0.15); 
+          tipPos.addScaledVector(direction, -0.15); 
 
           let papierPos = new THREE.Vector3();
           papier.object3D.getWorldPosition(papierPos);
@@ -43,7 +44,7 @@
           let distanceVerticale = tipPos.y - papierPos.y;
           let distCentrale = new THREE.Vector2(tipPos.x - papierPos.x, tipPos.z - papierPos.z).length();
 
-          // DÉTECTION FINE
+          // DÉTECTION DU CONTACT
           if (distanceVerticale < 0.03 && distanceVerticale > -0.01 && distCentrale < 0.3) {
             let trace = document.createElement('a-circle');
             let randomSize = 0.006 + (Math.random() * 0.004);
@@ -70,7 +71,7 @@
         }
       });
 
-      // 3. ATTACHER LE PINCEAU (Correction Rotation Inversée et Prise en main)
+      // 3. ATTACHER LE PINCEAU (Correction Retournement 180°)
       AFRAME.registerComponent('controller-grab', {
         init: function () {
           this.pinceau = document.querySelector('#pinceau-model');
@@ -84,18 +85,16 @@
             this.el.object3D.getWorldPosition(handPos);
             this.el.object3D.getWorldQuaternion(handQuat);
             
-            // On aligne la position du pinceau sur la manette
             this.pinceau.object3D.position.copy(handPos);
-            
-            // Correction de la rotation miroir : on applique le quaternion de la main
             this.pinceau.object3D.quaternion.copy(handQuat);
 
-            // Ajustements locaux pour que le pinceau soit dans le bon sens et incliné
-            this.pinceau.object3D.rotateY(Math.PI);    // Retourne le modèle pour éviter l'effet miroir
-            this.pinceau.object3D.rotateX(Math.PI / 4); // Inclinaison naturelle 45°
-            
-            // On déplace le manche pour qu'il ne soit pas au centre de la manette
-            this.pinceau.object3D.translateY(-0.15); 
+            // --- CORRECTION DU SENS ---
+            // On retourne le pinceau pour mettre la pointe vers le bas
+            this.pinceau.object3D.rotateX(Math.PI); 
+            // On l'incline pour la pose "stylo"
+            this.pinceau.object3D.rotateX(Math.PI / 4); 
+            // On le décale pour tenir le manche
+            this.pinceau.object3D.translateY(0.15); 
           }
         }
       });
