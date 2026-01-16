@@ -36,7 +36,7 @@
           // Inversion à -0.15 car le pinceau a subi une rotation de 180°
           let direction = new THREE.Vector3(0, 1, 0); 
           direction.applyQuaternion(pinceau.object3D.quaternion);
-          tipPos.addScaledVector(direction, -0.15); 
+          tipPos.addScaledVector(direction, 0.15); 
 
           let papierPos = new THREE.Vector3();
           papier.object3D.getWorldPosition(papierPos);
@@ -145,3 +145,4 @@
     </a-scene>
   </body>
 </html>
+
