@@ -2,33 +2,27 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Calligraphie MR - Choix du Mode</title>
+    <title>Calligraphie MR - MVP Final</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script>
-      // COMPOSANT DE GESTION DES MODES
+      // 1. GESTION DES MODES (VR vs AR)
       AFRAME.registerComponent('mode-manager', {
         init: function () {
           const sceneEl = this.el;
           const sky = document.querySelector('a-sky');
-
           sceneEl.addEventListener('enter-vr', () => {
-            // Si l'utilisateur a cliqué sur AR
             if (sceneEl.is('ar-mode')) {
               sky.setAttribute('visible', 'false');
               sceneEl.renderer.setClearColor('#000000', 0);
             } else {
-              // Si l'utilisateur est en VR classique
               sky.setAttribute('visible', 'true');
             }
           });
-
-          sceneEl.addEventListener('exit-vr', () => {
-            sky.setAttribute('visible', 'true');
-          });
+          sceneEl.addEventListener('exit-vr', () => { sky.setAttribute('visible', 'true'); });
         }
       });
 
-      // SYSTÈME DE TRACÉ D'ENCRE
+      // 2. SYSTÈME DE TRACÉ PRÉCIS + EFFET RÉALISTE
       AFRAME.registerComponent('trace-ink', {
         tick: function () {
           let pinceau = document.querySelector('#pinceau-model');
@@ -38,26 +32,45 @@
           let tipPos = new THREE.Vector3();
           pinceau.object3D.getWorldPosition(tipPos);
           
+          // CALCUL DE L'OFFSET : On projette le point de tracé au bout du modèle (12cm)
+          let direction = new THREE.Vector3(0, 0, 1); 
+          direction.applyQuaternion(pinceau.object3D.quaternion);
+          tipPos.addScaledVector(direction, 0.12); 
+
           let papierPos = new THREE.Vector3();
           papier.object3D.getWorldPosition(papierPos);
 
           let distanceVerticale = tipPos.y - papierPos.y;
           let distCentrale = new THREE.Vector2(tipPos.x - papierPos.x, tipPos.z - papierPos.z).length();
 
-          // On trace si on est à moins de 1.5cm du papier
-          if (distanceVerticale < 0.015 && distanceVerticale > -0.01 && distCentrale < 0.3) {
+          // DÉTECTION FINE : Moins de 1cm du papier
+          if (distanceVerticale < 0.01 && distanceVerticale > -0.005 && distCentrale < 0.3) {
             let trace = document.createElement('a-circle');
-            trace.setAttribute('radius', '0.007');
+            let randomSize = 0.005 + (Math.random() * 0.003); // Variation organique
+            trace.setAttribute('class', 'ink-trace'); // Pour pouvoir tout effacer d'un coup
+            trace.setAttribute('radius', randomSize);
             trace.setAttribute('color', '#1a1a1a');
+            trace.setAttribute('material', 'shader: flat; transparent: true; opacity: 0.9');
             trace.setAttribute('rotation', '-90 0 0');
-            trace.setAttribute('material', 'shader: flat');
             trace.setAttribute('position', {x: tipPos.x, y: papierPos.y + 0.001, z: tipPos.z});
             this.el.sceneEl.appendChild(trace);
           }
+
+          // DÉTECTION DU BOUTON EFFACER (Collision spatiale)
+          let bouton = document.querySelector('#bouton-effacer');
+          let boutonPos = new THREE.Vector3();
+          bouton.object3D.getWorldPosition(boutonPos);
+          if (tipPos.distanceTo(boutonPos) < 0.05) {
+             this.clearPaper();
+          }
+        },
+        clearPaper: function() {
+          const traces = document.querySelectorAll('.ink-trace');
+          traces.forEach(t => t.parentNode.removeChild(t));
         }
       });
 
-      // ATTACHER LE PINCEAU À LA MANETTE
+      // 3. ATTACHER LE PINCEAU (Correction Inclinaison)
       AFRAME.registerComponent('controller-grab', {
         init: function () {
           this.pinceau = document.querySelector('#pinceau-model');
@@ -72,34 +85,18 @@
             this.el.object3D.getWorldQuaternion(handQuat);
             this.pinceau.object3D.position.copy(handPos);
             this.pinceau.object3D.quaternion.copy(handQuat);
-            this.pinceau.object3D.rotateX(Math.PI / 2); // Aligne le pinceau
+            
+            // Correction d'angle pour une prise en main "stylo"
+            this.pinceau.object3D.rotateX(Math.PI / 4); 
+            this.pinceau.object3D.translateZ(-0.12); 
           }
         }
       });
     </script>
 
     <style>
-      /* Style pour les boutons sur l'écran du Quest avant de lancer */
-      .ui-overlay {
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 999;
-        display: flex;
-        gap: 20px;
-      }
-      button {
-        padding: 15px 25px;
-        border-radius: 10px;
-        border: none;
-        background: #ceac5d;
-        color: white;
-        font-weight: bold;
-        cursor: pointer;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-      }
-      button:hover { background: #b08d42; }
+      .ui-overlay { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 999; display: flex; gap: 20px; }
+      button { padding: 15px 25px; border-radius: 10px; border: none; background: #ceac5d; color: white; font-weight: bold; cursor: pointer; }
     </style>
   </head>
 
@@ -109,19 +106,14 @@
       <button onclick="document.querySelector('a-scene').enterAR()">MODE AR (PASSTHROUGH)</button>
     </div>
 
-    <a-scene 
-      mode-manager
-      trace-ink
-      renderer="alpha: true; antialias: true;"
-      webxr="optionalFeatures: passthrough, local-floor; referenceSpaceType: local-floor">
-
+    <a-scene mode-manager trace-ink renderer="alpha: true; antialias: true;" webxr="optionalFeatures: passthrough, local-floor; referenceSpaceType: local-floor">
       <a-assets>
         <a-asset-item id="pinceau-glb" src="pinceau.glb"></a-asset-item>
         <a-asset-item id="pavillon-glb" src="pavillon.glb"></a-asset-item>
-        <img id="sky-texture" src="ton-image-skybox.jpg">
+        <img id="sky-texture" src="ton-image-equirectangular.jpg">
       </a-assets>
 
-      <a-sky id="sky" src="<iframe src="https://skybox.blockadelabs.com/e/a98f229cea50fe0175159c0b8afb50d9" width=700 height=700 style="border:0;" allow="fullscreen"></iframe>"></a-sky>
+      <a-sky id="sky" src="#sky-texture"></a-sky>
 
       <a-entity light="type: ambient; intensity: 0.7;"></a-entity>
       <a-entity light="type: directional; intensity: 0.6;" position="1 2 1"></a-entity>
@@ -132,6 +124,9 @@
           <a-plane id="papier" position="0 0.03 0" rotation="-90 0 0" width="0.35" height="0.45" color="#fffaf0">
               <a-text value="永" color="#bbb" align="center" width="1.5" position="0 0 0.01"></a-text>
           </a-plane>
+          <a-cylinder id="bouton-effacer" position="0.3 0.03 0.15" radius="0.03" height="0.02" color="#ceac5d">
+              <a-text value="CLEAR" align="center" position="0 0.02 0" rotation="-90 0 0" width="0.8" color="white"></a-text>
+          </a-cylinder>
       </a-box>
 
       <a-entity id="pinceau-model" gltf-model="#pinceau-glb" position="0.2 0.8 -0.35" rotation="0 0 90" scale="0.3 0.3 0.3"></a-entity>
@@ -143,4 +138,3 @@
     </a-scene>
   </body>
 </html>
-
