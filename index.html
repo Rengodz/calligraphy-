@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Calligraphie MR - MVP Final</title>
+    <title>Calligraphie MR - MVP Final Corrigé</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script>
       // 1. GESTION DES MODES (VR vs AR)
@@ -22,7 +22,7 @@
         }
       });
 
-      // 2. SYSTÈME DE TRACÉ PRÉCIS + EFFET RÉALISTE
+      // 2. SYSTÈME DE TRACÉ PRÉCIS (Correction Axe Y + Sensibilité)
       AFRAME.registerComponent('trace-ink', {
         tick: function () {
           let pinceau = document.querySelector('#pinceau-model');
@@ -32,10 +32,11 @@
           let tipPos = new THREE.Vector3();
           pinceau.object3D.getWorldPosition(tipPos);
           
-          // CALCUL DE L'OFFSET : On projette le point de tracé au bout du modèle (12cm)
-          let direction = new THREE.Vector3(0, 0, 1); 
+          // --- CORRECTION AXE OFFSET ---
+          // Si l'encre vient de la manette, on change l'axe local (0, 1, 0) pour viser le bout du pinceau
+          let direction = new THREE.Vector3(0, 1, 0); 
           direction.applyQuaternion(pinceau.object3D.quaternion);
-          tipPos.addScaledVector(direction, 0.12); 
+          tipPos.addScaledVector(direction, 0.15); // On projette à 15cm le long du pinceau
 
           let papierPos = new THREE.Vector3();
           papier.object3D.getWorldPosition(papierPos);
@@ -43,24 +44,25 @@
           let distanceVerticale = tipPos.y - papierPos.y;
           let distCentrale = new THREE.Vector2(tipPos.x - papierPos.x, tipPos.z - papierPos.z).length();
 
-          // DÉTECTION FINE : Moins de 1cm du papier
-          if (distanceVerticale < 0.01 && distanceVerticale > -0.005 && distCentrale < 0.3) {
+          // --- SENSIBILITÉ ACCRUE ---
+          // On trace même si le pinceau est à 3cm (0.03) au-dessus du papier pour compenser les poils
+          if (distanceVerticale < 0.03 && distanceVerticale > -0.01 && distCentrale < 0.3) {
             let trace = document.createElement('a-circle');
-            let randomSize = 0.005 + (Math.random() * 0.003); // Variation organique
-            trace.setAttribute('class', 'ink-trace'); // Pour pouvoir tout effacer d'un coup
+            let randomSize = 0.006 + (Math.random() * 0.004);
+            trace.setAttribute('class', 'ink-trace');
             trace.setAttribute('radius', randomSize);
             trace.setAttribute('color', '#1a1a1a');
             trace.setAttribute('material', 'shader: flat; transparent: true; opacity: 0.9');
             trace.setAttribute('rotation', '-90 0 0');
-            trace.setAttribute('position', {x: tipPos.x, y: papierPos.y + 0.001, z: tipPos.z});
+            trace.setAttribute('position', {x: tipPos.x, y: papierPos.y + 0.002, z: tipPos.z});
             this.el.sceneEl.appendChild(trace);
           }
 
-          // DÉTECTION DU BOUTON EFFACER (Collision spatiale)
+          // DÉTECTION DU BOUTON EFFACER
           let bouton = document.querySelector('#bouton-effacer');
           let boutonPos = new THREE.Vector3();
           bouton.object3D.getWorldPosition(boutonPos);
-          if (tipPos.distanceTo(boutonPos) < 0.05) {
+          if (tipPos.distanceTo(boutonPos) < 0.06) {
              this.clearPaper();
           }
         },
@@ -70,7 +72,7 @@
         }
       });
 
-      // 3. ATTACHER LE PINCEAU (Correction Inclinaison)
+      // 3. ATTACHER LE PINCEAU (Correction Sens et Inclinaison)
       AFRAME.registerComponent('controller-grab', {
         init: function () {
           this.pinceau = document.querySelector('#pinceau-model');
@@ -83,12 +85,17 @@
             let handQuat = new THREE.Quaternion();
             this.el.object3D.getWorldPosition(handPos);
             this.el.object3D.getWorldQuaternion(handQuat);
+            
             this.pinceau.object3D.position.copy(handPos);
             this.pinceau.object3D.quaternion.copy(handQuat);
             
-            // Correction d'angle pour une prise en main "stylo"
+            // --- CORRECTION ROTATION ---
+            // On retourne le pinceau (Math.PI = 180°) car il était à l'envers
+            this.pinceau.object3D.rotation.x += Math.PI;
+            // On l'incline pour la pose naturelle "stylo"
             this.pinceau.object3D.rotateX(Math.PI / 4); 
-            this.pinceau.object3D.translateZ(-0.12); 
+            // On le décale pour qu'il sorte bien de la main
+            this.pinceau.object3D.translateZ(0.1); 
           }
         }
       });
@@ -96,7 +103,8 @@
 
     <style>
       .ui-overlay { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 999; display: flex; gap: 20px; }
-      button { padding: 15px 25px; border-radius: 10px; border: none; background: #ceac5d; color: white; font-weight: bold; cursor: pointer; }
+      button { padding: 15px 25px; border-radius: 10px; border: none; background: #ceac5d; color: white; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+      button:hover { background: #b08d42; }
     </style>
   </head>
 
@@ -110,7 +118,7 @@
       <a-assets>
         <a-asset-item id="pinceau-glb" src="pinceau.glb"></a-asset-item>
         <a-asset-item id="pavillon-glb" src="pavillon.glb"></a-asset-item>
-        <img id="sky-texture" src="ton-image-equirectangular.jpg">
+        <img id="sky-texture" src="sky.jpg">
       </a-assets>
 
       <a-sky id="sky" src="#sky-texture"></a-sky>
@@ -124,8 +132,8 @@
           <a-plane id="papier" position="0 0.03 0" rotation="-90 0 0" width="0.35" height="0.45" color="#fffaf0">
               <a-text value="永" color="#bbb" align="center" width="1.5" position="0 0 0.01"></a-text>
           </a-plane>
-          <a-cylinder id="bouton-effacer" position="0.3 0.03 0.15" radius="0.03" height="0.02" color="#ceac5d">
-              <a-text value="CLEAR" align="center" position="0 0.02 0" rotation="-90 0 0" width="0.8" color="white"></a-text>
+          <a-cylinder id="bouton-effacer" position="0.3 0.03 0.15" radius="0.04" height="0.02" color="#ceac5d">
+              <a-text value="CLEAR" align="center" position="0 0.021 0" rotation="-90 0 0" width="0.8" color="white"></a-text>
           </a-cylinder>
       </a-box>
 
